@@ -1,0 +1,16 @@
+# Pythonの一時ファイル
+__pycache__/
+*.py[cod]
+
+# 仮想環境フォルダ（絶対アップロードしない！）
+venv/
+.venv/
+
+# ローカル用のFFmpegフォルダ（Windows用なのでアップロードしない）
+bin/
+
+# 一時保存フォルダ
+temp/
+
+# VS Codeの設定ファイル
+.vscode/
