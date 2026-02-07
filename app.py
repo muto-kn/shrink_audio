@@ -1,26 +1,23 @@
 import streamlit as st
 import os
 import subprocess
-import re
-import time
 import shutil
+import re
+import time  # 時間計測用に追加
 
 # --- 設定 ---
-TARGET_SIZE_MB = 80
+TARGET_SIZE_MB = 75
 TEMP_DIR = "temp"
 
-
-# --- パス設定 (Webとローカルの両対応) ---
-# サーバー上に ffmpeg があるか確認
+# --- パス設定 (Web/Local両対応) ---
 if shutil.which("ffmpeg"):
-    # Webサーバー(Streamlit Cloud)用
     FFMPEG_PATH = "ffmpeg"
     FFPROBE_PATH = "ffprobe"
 else:
-    # ローカル(Windows)用
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
     FFMPEG_PATH = os.path.join(BASE_DIR, "bin", "ffmpeg.exe")
     FFPROBE_PATH = os.path.join(BASE_DIR, "bin", "ffprobe.exe")
+
 # --- 初期化 ---
 if not os.path.exists(TEMP_DIR):
     os.makedirs(TEMP_DIR)
@@ -70,19 +67,15 @@ def convert_time_str_to_seconds(time_str):
 
 
 def compress_audio_with_progress(input_file, output_file, duration_sec):
-    """進捗バー付きで圧縮処理を実行"""
+    """進捗バー＆経過時間付きで圧縮処理を実行"""
 
-    # 1. ビットレート計算 (Gemini最適化)
+    # 1. ビットレート計算
     target_bits = TARGET_SIZE_MB * 1024 * 1024 * 8
     calculated_bitrate = (target_bits / duration_sec) * 0.9
     bitrate_kbps = int(calculated_bitrate / 1000)
 
-    # Gemini向け調整 (モノラル・低ビットレート)
-    final_bitrate = bitrate_kbps
-    if final_bitrate < 12:
-        final_bitrate = 12
-    elif final_bitrate > 64:
-        final_bitrate = 64
+    # Gemini最適化 (12kbps ~ 64kbps)
+    final_bitrate = max(12, min(bitrate_kbps, 64))
 
     st.info(f"🎯 設定: モノラル / 16kHz / {final_bitrate} kbps")
 
@@ -91,76 +84,78 @@ def compress_audio_with_progress(input_file, output_file, duration_sec):
         FFMPEG_PATH,
         "-i",
         input_file,
-        "-vn",  # 映像削除
+        "-vn",
         "-c:a",
-        "aac",  # AAC
+        "aac",
         "-ac",
-        "1",  # モノラル
+        "1",
         "-ar",
-        "16000",  # 16kHz
+        "16000",
         "-b:a",
         f"{final_bitrate}k",
-        "-y",  # 上書き
+        "-y",
         output_file,
     ]
 
-    # 3. プロセス実行と進捗監視
-    # stderr=subprocess.PIPE でFFmpegのログを受け取る
+    # 3. プロセス実行
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
-        universal_newlines=True,  # テキストとして扱う
-        encoding="utf-8",  # Windowsでの文字化け防止
+        universal_newlines=True,
+        encoding="utf-8",
     )
 
-    # StreamlitのUI要素を用意
+    # UI要素
     progress_bar = st.progress(0)
     status_text = st.empty()
 
-    # 正規表現: "time=00:01:23.45" を探すパターン
+    # 時間計測開始
+    start_time = time.time()
+
     time_pattern = re.compile(r"time=(\d{2}:\d{2}:\d{2}\.\d+)")
 
     while True:
-        # 1行ずつ読み込む
         line = process.stderr.readline()
         if not line and process.poll() is not None:
-            break  # 処理終了
+            break
 
         if line:
-            # ログから時間を探す
             match = time_pattern.search(line)
             if match:
                 current_time_str = match.group(1)
                 current_sec = convert_time_str_to_seconds(current_time_str)
 
-                # 進捗率計算 (0.0 ~ 1.0)
-                progress = current_sec / duration_sec
-                progress = min(progress, 1.0)  # 100%を超えないように
+                # 進捗率
+                progress = min(current_sec / duration_sec, 1.0)
+
+                # 経過時間
+                elapsed_time = time.time() - start_time
 
                 # UI更新
                 progress_bar.progress(progress)
-                status_text.text(f"変換中... {int(progress*100)}% ({current_time_str})")
+                status_text.write(
+                    f"🔄 変換中... {int(progress*100)}% (経過: {elapsed_time:.1f}秒)"
+                )
 
-    # 終了コード確認
+    # 終了処理
+    end_time = time.time()
+    total_processing_time = end_time - start_time
+
     if process.returncode == 0:
-        progress_bar.progress(100)  # 念のため100%にする
-        status_text.text("完了！")
-        return True
+        progress_bar.progress(100)
+        status_text.empty()  # 途中経過を消す
+        return True, total_processing_time
     else:
-        st.error("エラーが発生しました。")
-        return False
+        return False, 0
 
 
 # --- メイン画面 ---
 st.title("🎙️ Gemini用 音声縮小ツール")
 
-uploaded_file = st.file_uploader(
-    "ファイルをアップロード (mp4, mov, mp3, wav...)", type=None
-)
+uploaded_file = st.file_uploader("ファイルをアップロード (mp4, mov, mp3...)", type=None)
 
 if uploaded_file:
-    # ファイルサイズ表示
     size_mb = uploaded_file.size / (1024 * 1024)
     st.write(f"📁 入力サイズ: {size_mb:.2f} MB")
 
@@ -169,24 +164,27 @@ if uploaded_file:
         output_name = os.path.splitext(uploaded_file.name)[0] + "_gemini.m4a"
         output_path = os.path.join(TEMP_DIR, output_name)
 
-        # 保存
         with open(input_path, "wb") as f:
             f.write(uploaded_file.getbuffer())
 
-        # 総時間を先に取得
         total_duration = get_duration(input_path)
 
         if total_duration:
-            st.write(f"⏱️ 総再生時間: {format_time_jp(total_duration)}")
+            st.write(f"⏱️ 動画の長さ: {format_time_jp(total_duration)}")
 
-            # 進捗バー付きで実行
-            success = compress_audio_with_progress(
+            # 処理実行
+            success, processing_time = compress_audio_with_progress(
                 input_path, output_path, total_duration
             )
 
             if success:
                 out_size = os.path.getsize(output_path) / (1024 * 1024)
-                st.success(f"✅ 完了しました！ ({out_size:.2f} MB)")
+
+                # 完了メッセージと処理時間
+                st.success(f"✅ 完了しました！")
+                st.info(
+                    f"⚡ 処理時間: {processing_time:.2f}秒 (サイズ: {out_size:.2f} MB)"
+                )
 
                 with open(output_path, "rb") as f:
                     st.download_button(
@@ -196,4 +194,4 @@ if uploaded_file:
                         mime="audio/mp4",
                     )
         else:
-            st.error("ファイルの時間を取得できませんでした。")
+            st.error("時間の取得に失敗しました")
