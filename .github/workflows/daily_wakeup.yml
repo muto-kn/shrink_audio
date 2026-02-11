@@ -1,0 +1,28 @@
+name: Daily Wake Up
+
+on:
+    schedule:
+        # 日本時間 6:00、14:00、22:00 に実行するための設定
+        - cron: '0 21,5,13 * * *'
+    # 手動で実行ボタンを押せるようにする設定（テスト用）
+    workflow_dispatch:
+
+jobs:
+    wake_up_job:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: リポジトリのコードを取得
+              uses: actions/checkout@v3
+
+            - name: Pythonのセットアップ
+              uses: actions/setup-python@v4
+              with:
+                  python-version: '3.9'
+
+            - name: 必要なライブラリをインストール
+              run: |
+                  pip install selenium webdriver-manager
+
+            - name: 起床スクリプトを実行
+              run: python wake_up.py
