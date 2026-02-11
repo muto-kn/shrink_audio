@@ -8,7 +8,7 @@ import uuid
 import json
 
 # --- 設定 ---
-TARGET_SIZE_MB = 80
+TARGET_SIZE_MB = 75
 TEMP_DIR = "temp"
 
 # --- パス設定 ---
@@ -188,7 +188,7 @@ def compress_audio_custom(input_file, output_file, duration_sec, settings):
 
 
 # --- メイン画面 ---
-st.title("🎛️ 音声縮小ツール Ultimate")
+st.title("🎛️ AIアシスタント用 音声縮小ツール")
 st.write("ファイル情報を確認し、形式・チャンネル・音質を細かく設定できます。")
 
 uploaded_file = st.file_uploader("ファイルをアップロード", type=None)
