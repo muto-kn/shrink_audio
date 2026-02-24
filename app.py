@@ -8,7 +8,7 @@ import uuid
 import json
 
 # --- 設定 ---
-TARGET_SIZE_MB = 75
+TARGET_SIZE_MB = 70
 TEMP_DIR = "temp"
 
 # --- パス設定 ---
