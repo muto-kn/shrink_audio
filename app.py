@@ -270,19 +270,39 @@ if uploaded_file:
 
         with set_col3:
             # ビットレート選択
-            # 自動計算 (80MBターゲット)
-            target_bits_80mb = TARGET_SIZE_MB * 1024 * 1024 * 8
-            auto_kbps_calc = (target_bits_80mb / info["duration"]) * 0.9 / 1000
+            # 自動計算 (70MBターゲット)
+            # target_bits_80mb = TARGET_SIZE_MB * 1024 * 1024 * 8
+            # auto_kbps_calc = (target_bits_80mb / info["duration"]) * 0.9 / 1000
 
-            # ステレオの場合はビットレートを少し多めに見積もる補正を入れてもいいが
-            # 今回はあくまで「80MBに収める」計算を優先
-            auto_kbps = int(max(12, min(auto_kbps_calc, 192)))
+            # # ステレオの場合はビットレートを少し多めに見積もる補正を入れてもいいが
+            # # 今回はあくまで「80MBに収める」計算を優先
+            # auto_kbps = int(max(12, min(auto_kbps_calc, 192)))
+
+            # bitrate_options = [12, 16, 24, 32, 48, 64, 96, 128, 160, 192, 256, 320]
+            # default_index = min(
+            #     range(len(bitrate_options)),
+            #     key=lambda i: abs(bitrate_options[i] - auto_kbps),
+            # )
+
+            target_bits = TARGET_SIZE_MB * 1024 * 1024 * 8
+            # 目標容量に収まる100%の上限ビットレート
+            max_kbps_limit = (target_bits / info["duration"]) / 1000
+            # 余裕を持たせた安全ライン（90%）
+            safe_kbps_limit = max_kbps_limit * 0.9
 
             bitrate_options = [12, 16, 24, 32, 48, 64, 96, 128, 160, 192, 256, 320]
-            default_index = min(
-                range(len(bitrate_options)),
-                key=lambda i: abs(bitrate_options[i] - auto_kbps),
-            )
+
+            # 安全ライン以下の選択肢だけをリストアップ
+            valid_options = [
+                i for i, b in enumerate(bitrate_options) if b <= safe_kbps_limit
+            ]
+
+            if valid_options:
+                # 条件を満たす中で一番大きいものを選ぶ
+                default_index = valid_options[-1]
+            else:
+                # 12kbpsでもオーバーしてしまうような超長時間のファイルの場合
+                default_index = 0
 
             selected_kbps = st.selectbox(
                 "ビットレート (kbps)",
